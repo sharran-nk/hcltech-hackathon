@@ -6,7 +6,7 @@
 set -eux
 exec > >(tee -a /var/log/solstice-deploy.log) 2>&1
 
-BUCKET=solstice-docs-905418462063-aps1
+BUCKET=YOUR_BUCKET_NAME   # replace with your private bucket (see docs/AWS_SETUP.md)
 REGION=ap-south-1
 APP=/opt/solstice
 export DEBIAN_FRONTEND=noninteractive HOME=/root

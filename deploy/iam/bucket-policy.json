@@ -7,8 +7,8 @@
       "Principal": "*",
       "Action": "s3:*",
       "Resource": [
-        "arn:aws:s3:::solstice-docs-905418462063-aps1",
-        "arn:aws:s3:::solstice-docs-905418462063-aps1/*"
+        "arn:aws:s3:::YOUR_BUCKET_NAME",
+        "arn:aws:s3:::YOUR_BUCKET_NAME/*"
       ],
       "Condition": { "Bool": { "aws:SecureTransport": "false" } }
     }

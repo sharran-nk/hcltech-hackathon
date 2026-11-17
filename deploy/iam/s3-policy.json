@@ -5,13 +5,13 @@
       "Sid": "DocumentObjectsOnly",
       "Effect": "Allow",
       "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
-      "Resource": "arn:aws:s3:::solstice-docs-905418462063-aps1/documents/*"
+      "Resource": "arn:aws:s3:::YOUR_BUCKET_NAME/documents/*"
     },
     {
       "Sid": "ReadDeployBundleOnly",
       "Effect": "Allow",
       "Action": ["s3:GetObject"],
-      "Resource": "arn:aws:s3:::solstice-docs-905418462063-aps1/deploy/*"
+      "Resource": "arn:aws:s3:::YOUR_BUCKET_NAME/deploy/*"
     }
   ]
 }
