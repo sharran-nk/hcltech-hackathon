@@ -1,0 +1,11 @@
+{
+  "bm25_min": 3.5,
+  "faiss_min": 0.46,
+  "min_coverage": 0.4,
+  "calibrated_on": "2026-11-17",
+  "questions": 33,
+  "leak_cost": 1.0,
+  "coverage_floor": 0.4,
+  "corpus_chunks": 13,
+  "note": "BM25 scale depends on corpus size: recalibrate after the document set changes."
+}

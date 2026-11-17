@@ -1,0 +1,7 @@
+[server]
+headless = true
+maxUploadSize = 20          # MB; keep equal to MAX_UPLOAD_MB (the app validates size again server-side)
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false

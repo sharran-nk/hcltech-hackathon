@@ -1,0 +1,40 @@
+{
+  "_note": "Q-1..Q-5 come from the case study. Every other question is PROJECT-CREATED (paraphrases, near-misses, out-of-scope) and was written by us, not supplied by the customer. expected_fact is a substring the correct answer must be grounded in.",
+  "questions": [
+    {"id": "Q-1", "source": "case-study", "question": "How do I reset my password?", "expected_doc_id": "D-01", "expected_fact": "Forgot password"},
+    {"id": "Q-2", "source": "case-study", "question": "How long do I have to use a password reset link before it expires?", "expected_doc_id": "D-01", "expected_fact": "15 minutes"},
+    {"id": "Q-3", "source": "case-study", "question": "What's the maximum number of rows I can export to CSV?", "expected_doc_id": "D-03", "expected_fact": "10,000 rows"},
+    {"id": "Q-4", "source": "case-study", "question": "What are the API rate limits for the Growth plan?", "expected_doc_id": "D-06", "expected_fact": "60 requests per minute"},
+    {"id": "Q-5", "source": "case-study", "question": "Can I connect Solstice to Salesforce?", "expected_doc_id": null, "note": "No documentation covers this."},
+
+    {"id": "A-01", "source": "project", "question": "I forgot my password, what should I do?", "expected_doc_id": "D-01", "expected_fact": "Forgot password"},
+    {"id": "A-02", "source": "project", "question": "My reset email never arrived. What now?", "expected_doc_id": "D-01", "expected_fact": "spam folder"},
+    {"id": "A-03", "source": "project", "question": "What are the password requirements?", "expected_doc_id": "D-01", "expected_fact": "8 characters"},
+    {"id": "A-04", "source": "project", "question": "How can I invite a new teammate?", "expected_doc_id": "D-02", "expected_fact": "Invite Member"},
+    {"id": "A-05", "source": "project", "question": "Which roles can I give when inviting someone?", "expected_doc_id": "D-02", "expected_fact": "Viewer, Editor, or Admin"},
+    {"id": "A-06", "source": "project", "question": "How do I export a report to CSV?", "expected_doc_id": "D-03", "expected_fact": "Export as CSV"},
+    {"id": "A-07", "source": "project", "question": "How many days are my exported files kept?", "expected_doc_id": "D-03", "expected_fact": "7 days"},
+    {"id": "A-08", "source": "project", "question": "When do I receive my invoice before renewal?", "expected_doc_id": "D-04", "expected_fact": "3 days"},
+    {"id": "A-09", "source": "project", "question": "What happens if my renewal payment fails?", "expected_doc_id": "D-04", "expected_fact": "retry twice"},
+    {"id": "A-10", "source": "project", "question": "Can I get a refund for an annual plan?", "expected_doc_id": "D-04", "expected_fact": "30 days"},
+    {"id": "A-11", "source": "project", "question": "How do I change my billing contact?", "expected_doc_id": "D-04", "expected_fact": "Settings > Billing"},
+    {"id": "A-12", "source": "project", "question": "Does Solstice support SAML single sign-on?", "expected_doc_id": "D-05", "expected_fact": "SAML 2.0"},
+    {"id": "A-13", "source": "project", "question": "Where do I configure SSO?", "expected_doc_id": "D-05", "expected_fact": "Settings > Security > SSO"},
+    {"id": "A-14", "source": "project", "question": "What happens when I go over the API limit?", "expected_doc_id": "D-06", "expected_fact": "429"},
+    {"id": "A-15", "source": "project", "question": "How many requests per minute does the Enterprise plan allow?", "expected_doc_id": "D-06", "expected_fact": "300 requests per minute"},
+    {"id": "A-16", "source": "project", "question": "Which plans include API access?", "expected_doc_id": "D-06", "expected_fact": "Growth and Enterprise"},
+
+    {"id": "U-01", "source": "project", "question": "What is the weather in Chennai today?", "expected_doc_id": null},
+    {"id": "U-02", "source": "project", "question": "How do I set up Slack notifications?", "expected_doc_id": null},
+    {"id": "U-03", "source": "project", "question": "Can I enable two-factor authentication?", "expected_doc_id": null},
+    {"id": "U-04", "source": "project", "question": "How do I delete my account?", "expected_doc_id": null},
+    {"id": "U-05", "source": "project", "question": "What is the price of the Enterprise plan?", "expected_doc_id": null, "note": "near miss: plan/billing words appear in docs, price does not"},
+    {"id": "U-06", "source": "project", "question": "Does the API support webhooks?", "expected_doc_id": null, "note": "near miss: API words appear, webhooks do not"},
+    {"id": "U-07", "source": "project", "question": "Can I export a report to PDF?", "expected_doc_id": null, "note": "near miss: only CSV export is documented"},
+    {"id": "U-08", "source": "project", "question": "Who is the CEO of Solstice Learning?", "expected_doc_id": null},
+    {"id": "U-09", "source": "project", "question": "Write me a poem about passwords.", "expected_doc_id": null},
+    {"id": "U-10", "source": "project", "question": "Does Solstice have a mobile app?", "expected_doc_id": null},
+    {"id": "U-11", "source": "project", "question": "Can I bulk import users from a CSV file?", "expected_doc_id": null, "note": "near miss: CSV and users words appear, import does not"},
+    {"id": "U-12", "source": "project", "question": "hello", "expected_doc_id": null}
+  ]
+}
