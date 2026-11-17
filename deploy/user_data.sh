@@ -32,6 +32,8 @@ unzip -o /tmp/solstice-app.zip -d $APP
 # 4) Python dependencies (CPU-only torch: the default Linux wheel pulls ~2 GB of CUDA libraries we cannot use)
 .venv/bin/pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 .venv/bin/pip install --no-cache-dir -r requirements.txt
+# DEMO MODE only (DEV_FAKE_S3=1 in .env): the in-memory fake S3 needs moto. Not installed in a real deployment.
+if grep -q '^DEV_FAKE_S3=1' $APP/.env; then .venv/bin/pip install --no-cache-dir "moto[s3]"; fi
 export HF_HOME=$APP/.cache/huggingface
 .venv/bin/python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
 chown -R ubuntu:ubuntu $APP

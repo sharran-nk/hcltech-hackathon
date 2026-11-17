@@ -45,8 +45,6 @@ def render_citations(citations) -> None:
 
 def render_assistant_message(msg: dict) -> None:
     st.markdown(msg["content"])
-    if msg.get("notice"):
-        st.info(msg["notice"])
     if msg.get("citations"):
         render_citations(msg["citations"])
 
@@ -208,8 +206,6 @@ def admin_mode(svc: services.Services) -> None:
 def main() -> None:
     svc = get_services()
     st.title("📘 Solstice Learning Docs Assistant")
-    if svc.dev_fake_s3:
-        st.warning("DEV MODE: documents are kept in an in-memory fake S3 and disappear when the app restarts.")
     mode = st.sidebar.radio("Mode", ["Ask questions", "Admin"], key="mode")
     st.sidebar.caption("Admin access is password protected.")
     if mode == "Ask questions":

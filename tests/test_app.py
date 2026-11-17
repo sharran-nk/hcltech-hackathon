@@ -240,7 +240,7 @@ def test_full_app_with_real_services_and_dev_fake_s3(tmp_path, monkeypatch):
     st.cache_resource.clear()
     try:
         at = AppTest.from_file(APP, default_timeout=180).run()
-        assert not at.exception and "DEV MODE" in all_text(at)
+        assert not at.exception and "DEV MODE" not in all_text(at)  # the notice was removed from the UI
         ask(at, "How long do I have to use a password reset link before it expires?")
         assert "15 minutes" in all_text(at) and [e.label for e in at.expander] == ["Sources (1)"]
         ask(at, "Can I connect Solstice to Salesforce?")
