@@ -8,6 +8,7 @@ charts or screenshots' meaning, and this module makes no such claim.
 """
 import hashlib
 import io
+import json
 import logging
 import shutil
 import uuid
@@ -33,7 +34,7 @@ MAGIC = {
     "jpeg": (b"\xff\xd8\xff",),
     "docx": (b"PK\x03\x04",),
 }
-EXT_TO_KIND = {".pdf": "pdf", ".docx": "docx", ".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg"}
+EXT_TO_KIND = {".pdf": "pdf", ".docx": "docx", ".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg", ".json": "json"}
 
 
 class DocumentProcessingError(Exception):
@@ -72,6 +73,8 @@ def detect_kind(data: bytes) -> Optional[str]:
     for kind, prefixes in MAGIC.items():
         if any(data.startswith(p) for p in prefixes):
             return kind
+    if data.lstrip(b"\xef\xbb\xbf \t\r\n")[:1] in (b"{", b"["):  # JSON has no magic bytes: it must open with { or [
+        return "json"
     return None
 
 
@@ -113,9 +116,52 @@ def validate_upload(filename: str, data: bytes) -> str:
         _validate_pdf(data)
     elif kind == "docx":
         _validate_docx(data)
+    elif kind == "json":
+        _validate_json(data)
     else:
         _validate_image(data)
     return kind
+
+
+def _json_texts(obj) -> list:
+    """Text sections of a JSON document. Understands {"docs":[{"title","content"}]} (and a bare list of such
+    objects): one section per article. Any other JSON falls back to every string value, one section."""
+    items = obj.get("docs") if isinstance(obj, dict) and isinstance(obj.get("docs"), list) else obj
+    if isinstance(items, list) and items and all(isinstance(i, dict) for i in items):
+        sections = []
+        for item in items:
+            body = next((item[k] for k in ("content", "text", "body") if isinstance(item.get(k), str)), "")
+            title = item.get("title") if isinstance(item.get("title"), str) else ""
+            if body.strip():
+                sections.append(f"{title.strip()}. {body.strip()}" if title.strip() else body.strip())
+        if sections:
+            return sections
+    lines = []
+
+    def walk(node, key=""):
+        if isinstance(node, str):
+            if node.strip():
+                text = f"{key}: {node.strip()}" if key else node.strip()
+                lines.append(text if text[-1] in ".!?" else text + ".")
+        elif isinstance(node, dict):
+            for k, v in node.items():
+                walk(v, str(k))
+        elif isinstance(node, list):
+            for v in node:
+                walk(v, key)
+
+    walk(obj)
+    return ["\n".join(lines)] if lines else []
+
+
+def _validate_json(data: bytes) -> None:
+    try:
+        parsed = json.loads(data.decode("utf-8-sig"))
+        has_text = bool(_json_texts(parsed))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        raise ValidationError("The JSON file is not valid UTF-8 JSON.") from None
+    if not has_text:
+        raise ValidationError("The JSON file contains no text content.")
 
 
 def _validate_pdf(data: bytes) -> None:
@@ -180,6 +226,8 @@ def extract_text(path: Path, kind: str) -> ExtractionResult:
         result = _extract_pdf(path)
     elif kind == "docx":
         result = _extract_docx(path)
+    elif kind == "json":
+        result = _extract_json(path)
     elif kind in ("png", "jpeg"):
         result = _extract_image(path)
     else:
@@ -263,6 +311,17 @@ def _extract_docx(path: Path) -> ExtractionResult:
         result.pages.append(ExtractedPage(None, text, "docx"))
     if document.inline_shapes:
         result.warnings.append("images inside DOCX are not OCR'd")
+    return result
+
+
+def _extract_json(path: Path) -> ExtractionResult:
+    try:
+        parsed = json.loads(path.read_bytes().decode("utf-8-sig"))
+        sections = _json_texts(parsed)
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        raise ExtractionError("The JSON file could not be read.") from None
+    result = ExtractionResult(kind="json", page_count=len(sections))
+    result.pages = [ExtractedPage(None, _clean(s), "json") for s in sections]  # one section per article
     return result
 
 

@@ -122,10 +122,10 @@ def documents_table(svc: services.Services) -> None:
 
 def upload_section(svc: services.Services, token: str) -> None:
     st.markdown("#### Upload documents")
-    st.caption(f"PDF (digital or scanned), DOCX, PNG, JPG. Max {config.MAX_UPLOAD_MB} MB each. "
+    st.caption(f"PDF (digital or scanned), DOCX, PNG, JPG, JSON. Max {config.MAX_UPLOAD_MB} MB each. "
                "OCR reads printed text only; it does not interpret diagrams or charts.")
     key = st.session_state.setdefault("uploader_key", 0)
-    files = st.file_uploader("Choose files", type=["pdf", "docx", "png", "jpg", "jpeg"],
+    files = st.file_uploader("Choose files", type=["pdf", "docx", "png", "jpg", "jpeg", "json"],
                              accept_multiple_files=True, key=f"uploader-{key}")
     if st.button("Upload and process", disabled=not files, type="primary"):
         for f in files:

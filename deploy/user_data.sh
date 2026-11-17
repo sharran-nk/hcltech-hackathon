@@ -13,7 +13,7 @@ export DEBIAN_FRONTEND=noninteractive HOME=/root
 
 # 1) swap: the instance is small and torch needs headroom while loading
 if ! swapon --show | grep -q /swapfile; then
-  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
 fi
 
 # 2) OS packages
@@ -34,6 +34,17 @@ unzip -o /tmp/solstice-app.zip -d $APP
 .venv/bin/pip install --no-cache-dir -r requirements.txt
 # DEMO MODE only (DEV_FAKE_S3=1 in .env): the in-memory fake S3 needs moto. Not installed in a real deployment.
 if grep -q '^DEV_FAKE_S3=1' $APP/.env; then .venv/bin/pip install --no-cache-dir "moto[s3]"; fi
+# Local LLM (only when INSTALL_OLLAMA=1 in .env; needs >= 16 GB RAM for qwen2.5:7b, e.g. t3.xlarge).
+# Ollama listens on 127.0.0.1 only and is never exposed through the security group or nginx.
+if grep -q '^INSTALL_OLLAMA=1' $APP/.env; then
+  MODEL=$(grep '^OLLAMA_MODEL=' $APP/.env | cut -d= -f2); MODEL=${MODEL:-qwen2.5:7b}
+  curl -fsSL https://ollama.com/install.sh | sh
+  mkdir -p /etc/systemd/system/ollama.service.d
+  printf '[Service]\nEnvironment="OLLAMA_HOST=127.0.0.1:11434"\nEnvironment="OLLAMA_NUM_PARALLEL=1"\nEnvironment="OLLAMA_MAX_LOADED_MODELS=1"\n' > /etc/systemd/system/ollama.service.d/local-only.conf
+  systemctl daemon-reload && systemctl enable --now ollama
+  for i in $(seq 1 30); do curl -s http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 2; done
+  ollama pull "$MODEL"
+fi
 export HF_HOME=$APP/.cache/huggingface
 .venv/bin/python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
 chown -R ubuntu:ubuntu $APP

@@ -11,7 +11,7 @@ from auth import AuthManager
 from document_manager import DocumentManager
 from embeddings import get_embedder
 from index_store import IndexStore
-from rag_pipeline import OllamaClient, RagPipeline
+from rag_pipeline import BedrockClient, OllamaClient, RagPipeline
 from retrieval import Retriever
 from s3_storage import S3Storage
 
@@ -64,7 +64,7 @@ def build_services() -> Services:
 
     store = IndexStore()
     embedder = get_embedder()
-    llm = OllamaClient()
+    llm = BedrockClient() if config.LLM_PROVIDER == "bedrock" else OllamaClient()
     manager = DocumentManager(S3Storage(bucket=bucket), store, embedder, AuthManager())
     manager.start()
     embedder.embed_query("warm up")                                    # load the embedding model now, not on the first question

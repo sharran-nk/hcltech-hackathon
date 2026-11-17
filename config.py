@@ -39,7 +39,7 @@ DEV_FAKE_S3 = os.getenv("DEV_FAKE_S3", "0") == "1"
 MAX_UPLOAD_MB = _int("MAX_UPLOAD_MB", 20)
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 MAX_PDF_PAGES = _int("MAX_PDF_PAGES", 100)
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".png", ".jpg", ".jpeg"}
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".png", ".jpg", ".jpeg", ".json"}
 
 # --- Extraction / OCR ---
 def _find_tesseract() -> str:
@@ -75,6 +75,10 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 OLLAMA_TIMEOUT_SECONDS = _int("OLLAMA_TIMEOUT_SECONDS", 120)
+# Which LLM backend answers questions: "ollama" (local) or "bedrock" (Amazon Bedrock, IAM-role credentials).
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
+BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "qwen.qwen3-32b-v1:0")
+BEDROCK_REGION = os.getenv("BEDROCK_REGION", AWS_REGION)
 
 # --- Chunking / retrieval ---
 SENTENCES_PER_CHUNK = _int("SENTENCES_PER_CHUNK", 3)
