@@ -3,6 +3,7 @@
 Security note: hiding admin widgets is only cosmetic. Every admin action is re-checked on the
 server inside DocumentManager (auth.require_admin), using a server-side session token.
 """
+import html
 import logging
 
 import pandas as pd
@@ -24,6 +25,67 @@ st.set_page_config(page_title="Solstice Docs Assistant", page_icon="📘", layou
 STATUS_LABEL = {"queued": "⏳ Queued", "processing": "⚙️ Processing", "indexed": "✅ Indexed", "failed": "❌ Failed",
                 "delete_failed": "⚠️ Delete incomplete"}
 
+EXAMPLE_QUESTIONS = [
+    ("🔑", "How do I reset my password?"),
+    ("📊", "What's the maximum number of rows I can export to CSV?"),
+    ("⚡", "What are the API rate limits for the Growth plan?"),
+    ("🧾", "When do I receive my invoice before renewal?"),
+]
+
+# Static stylesheet written by us (no user content is ever placed in it).
+CSS = """
+<style>
+#MainMenu, footer {visibility: hidden;}
+.block-container {padding-top: 1.6rem; max-width: 860px;}
+
+/* ---------- hero ---------- */
+.hero {background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 55%, #06B6D4 100%);
+       border-radius: 22px; padding: 30px 32px 26px; color: #fff; margin-bottom: 1.1rem;
+       box-shadow: 0 14px 34px rgba(79,70,229,.28); position: relative; overflow: hidden;}
+.hero:after {content: ""; position: absolute; right: -60px; top: -60px; width: 220px; height: 220px;
+             border-radius: 50%; background: rgba(255,255,255,.10);}
+.hero h1 {margin: 0; font-size: 2rem; font-weight: 800; letter-spacing: -.02em; color: #fff;}
+.hero p {margin: .45rem 0 1.05rem; font-size: 1.02rem; opacity: .93; max-width: 560px;}
+.chip {display: inline-block; background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.28);
+       color: #fff; border-radius: 999px; padding: 5px 13px; font-size: .82rem; margin: 0 8px 6px 0;
+       backdrop-filter: blur(4px);}
+
+/* ---------- chat ---------- */
+[data-testid="stChatMessage"] {background: #fff; border: 1px solid #E7E9F3; border-radius: 18px;
+       padding: 14px 18px; box-shadow: 0 2px 10px rgba(27,32,51,.05); margin-bottom: .7rem;}
+.badge {display: inline-block; border-radius: 999px; padding: 3px 11px; font-size: .76rem; font-weight: 600;}
+.badge-ok {background: #E7F8EF; color: #137A47; border: 1px solid #BDEBD2;}
+.badge-no {background: #FFF4E0; color: #9A5B00; border: 1px solid #F6DBA6;}
+.section-label {font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+                color: #6B7194; margin: .6rem 0 .4rem;}
+
+/* ---------- source cards ---------- */
+.src-title {font-weight: 700; color: #1B2033;}
+.pill {display: inline-block; background: #EEF2FF; color: #4338CA; border-radius: 999px;
+       padding: 2px 10px; font-size: .75rem; font-weight: 600; margin-left: 6px;}
+
+/* ---------- controls ---------- */
+.stButton > button {border-radius: 12px; border: 1px solid #DADDF0; font-weight: 600; transition: all .15s;}
+.stButton > button:hover {border-color: #4F46E5; color: #4F46E5; transform: translateY(-1px);
+                          box-shadow: 0 6px 16px rgba(79,70,229,.16);}
+.stButton > button[kind="primary"] {background: linear-gradient(135deg, #4F46E5, #7C3AED); color: #fff; border: 0;}
+[data-testid="stMetric"] {background: #fff; border: 1px solid #E7E9F3; border-radius: 16px; padding: 14px 16px;
+                          box-shadow: 0 2px 10px rgba(27,32,51,.05);}
+[data-testid="stMetricLabel"] {color: #6B7194;}
+[data-testid="stTabs"] button[role="tab"] {font-weight: 600;}
+[data-testid="stVerticalBlockBorderWrapper"] {border-radius: 16px;}
+
+/* ---------- sidebar ---------- */
+[data-testid="stSidebar"] {background: linear-gradient(180deg, #ECEBFF 0%, #F6F7FB 60%);}
+.brand {display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.1rem; margin-bottom: .2rem;}
+.brand .logo {background: linear-gradient(135deg, #4F46E5, #06B6D4); color: #fff; border-radius: 12px;
+              width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;}
+.step {display: flex; gap: 10px; margin: 8px 0; font-size: .88rem; color: #39406A;}
+.step b {background: #4F46E5; color: #fff; border-radius: 50%; min-width: 22px; height: 22px;
+         display: flex; align-items: center; justify-content: center; font-size: .75rem;}
+</style>
+"""
+
 
 @st.cache_resource(show_spinner="Starting up: loading indexes and models…")
 def get_services() -> services.Services:
@@ -34,43 +96,67 @@ def human_size(n: int) -> str:
     return f"{n / 1024:.0f} KB" if n < 1024 * 1024 else f"{n / 1024 / 1024:.1f} MB"
 
 
+def hero(svc: services.Services, title: str, subtitle: str) -> None:
+    snap = svc.store.snapshot
+    st.markdown(
+        f'<div class="hero"><h1>{html.escape(title)}</h1><p>{html.escape(subtitle)}</p>'
+        f'<span class="chip">📚 {len(snap.doc_ids())} documents</span>'
+        f'<span class="chip">🧩 {snap.chunk_count} searchable passages</span>'
+        f'<span class="chip">🔎 Every answer cites its source</span></div>',
+        unsafe_allow_html=True)
+
+
 # ------------------------------------------------------------------ User mode
 def render_citations(citations) -> None:
     with st.expander(f"Sources ({len(citations)})"):
         for c in citations:
             page = f" · page {c.page_number}" if c.page_number else ""
-            st.markdown(f"**[{c.number}] {c.title}**{page} · `{c.chunk_id}`")
+            st.markdown(
+                f'<span class="src-title">[{c.number}] {html.escape(c.title)}</span>{html.escape(page)}'
+                f'<span class="pill">{html.escape(c.chunk_id)}</span>', unsafe_allow_html=True)
             st.text(c.snippet)  # st.text: document content is shown literally, never interpreted as markdown/HTML
 
 
 def render_assistant_message(msg: dict) -> None:
     st.markdown(msg["content"])
+    if msg["content"] == config.NO_ANSWER_MESSAGE:
+        st.markdown('<span class="badge badge-no">Not covered by the documentation</span>', unsafe_allow_html=True)
+    elif msg.get("citations"):
+        st.markdown('<span class="badge badge-ok">Answered from the documentation</span>', unsafe_allow_html=True)
     if msg.get("citations"):
         render_citations(msg["citations"])
 
 
 def user_mode(svc: services.Services) -> None:
-    st.subheader("Ask a question")
-    st.caption("Answers come only from the uploaded documentation, with sources. If the documents do not cover it, "
-               "the assistant will say so.")
+    hero(svc, "Ask the docs", "Plain-English questions, answers taken only from your documentation, "
+                              "with sources you can check.")
     if svc.store.snapshot.chunk_count == 0:
         st.info("No documents are indexed yet. An admin needs to upload documentation first.")
 
     history = st.session_state.setdefault("messages", [])
+    question = st.chat_input("Ask about the documentation…", max_chars=500) or st.session_state.pop("pending_question", None)
+
+    if not history and not question:  # empty state: one-click example questions
+        st.markdown('<div class="section-label">Try asking</div>', unsafe_allow_html=True)
+        cols = st.columns(2)
+        for i, (icon, text) in enumerate(EXAMPLE_QUESTIONS):
+            if cols[i % 2].button(f"{icon}  {text}", key=f"example-{i}", width="stretch"):
+                st.session_state["pending_question"] = text
+                st.rerun()
+
     for msg in history:
-        with st.chat_message(msg["role"]):
+        with st.chat_message(msg["role"], avatar="🧑‍💼" if msg["role"] == "user" else "📘"):
             if msg["role"] == "assistant":
                 render_assistant_message(msg)
             else:
                 st.markdown(msg["content"])
 
-    question = st.chat_input("Ask about the documentation…", max_chars=500)
     if not question:
         return
     history.append({"role": "user", "content": question})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar="🧑‍💼"):
         st.markdown(question)
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar="📘"):
         try:
             with st.spinner("Searching the documentation…"):
                 result = svc.pipeline.answer(question)
@@ -85,10 +171,12 @@ def user_mode(svc: services.Services) -> None:
 
 # ------------------------------------------------------------------ Admin mode
 def login_form(svc: services.Services) -> None:
-    st.subheader("Admin login")
-    with st.form("login"):
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Log in")
+    hero(svc, "Admin console", "Sign in to upload, review and remove documentation.")
+    with st.container(border=True):
+        st.markdown("#### 🔐 Admin login")
+        with st.form("login"):
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Log in", type="primary")
     if submitted:
         try:
             with st.spinner("Checking…"):
@@ -109,6 +197,12 @@ def documents_table(svc: services.Services) -> None:
         st.session_state["session_expired"] = True
         st.rerun()
         return
+    count = lambda *s: sum(1 for d in docs if d["status"] in s)  # noqa: E731
+    cols = st.columns(4)
+    cols[0].metric("Documents", len(docs))
+    cols[1].metric("Searchable", count("indexed"))
+    cols[2].metric("In progress", count("queued", "processing"))
+    cols[3].metric("Needs attention", count("failed", "delete_failed"))
     if not docs:
         st.caption("No documents yet.")
         return
@@ -121,11 +215,11 @@ def documents_table(svc: services.Services) -> None:
 
 
 def upload_section(svc: services.Services, token: str) -> None:
-    st.markdown("#### Upload documents")
+    st.markdown("##### Add documents")
     st.caption(f"PDF (digital or scanned), DOCX, PNG, JPG, JSON. Max {config.MAX_UPLOAD_MB} MB each. "
                "OCR reads printed text only; it does not interpret diagrams or charts.")
     key = st.session_state.setdefault("uploader_key", 0)
-    files = st.file_uploader("Choose files", type=["pdf", "docx", "png", "jpg", "jpeg", "json"],
+    files = st.file_uploader("Drop files here or browse", type=["pdf", "docx", "png", "jpg", "jpeg", "json"],
                              accept_multiple_files=True, key=f"uploader-{key}")
     if st.button("Upload and process", disabled=not files, type="primary"):
         for f in files:
@@ -146,7 +240,7 @@ def upload_section(svc: services.Services, token: str) -> None:
 
 
 def delete_section(svc: services.Services, token: str) -> None:
-    st.markdown("#### Delete a document")
+    st.markdown("##### Remove a document")
     docs = svc.manager.list_documents(token)
     if not docs:
         st.caption("Nothing to delete.")
@@ -187,27 +281,41 @@ def admin_mode(svc: services.Services) -> None:
         login_form(svc)
         return
 
-    top = st.columns([4, 1])
-    top[0].subheader("Admin")
-    if top[1].button("Log out"):
+    hero(svc, "Admin console", "Upload documentation, watch it get indexed, and remove what is out of date.")
+    if st.button("Log out"):
         svc.auth.logout(token)
         st.session_state.pop("admin_token", None)
         st.rerun()
     flash = st.session_state.pop("flash", None)  # a message that must survive st.rerun()
     if flash:
         getattr(st, flash[0])(flash[1])
-    upload_section(svc, token)
-    st.markdown("#### Documents")
-    documents_table(svc)
-    delete_section(svc, token)
+
+    tab_docs, tab_upload, tab_manage = st.tabs(["📚 Documents", "📤 Upload", "🗑️ Manage"])
+    with tab_docs:
+        documents_table(svc)
+    with tab_upload:
+        with st.container(border=True):
+            upload_section(svc, token)
+    with tab_manage:
+        with st.container(border=True):
+            delete_section(svc, token)
 
 
 # ------------------------------------------------------------------ main
 def main() -> None:
     svc = get_services()
-    st.title("📘 Solstice Learning Docs Assistant")
-    mode = st.sidebar.radio("Mode", ["Ask questions", "Admin"], key="mode")
-    st.sidebar.caption("Admin access is password protected.")
+    st.markdown(CSS, unsafe_allow_html=True)
+    with st.sidebar:
+        st.markdown('<div class="brand"><div class="logo">📘</div>Solstice Docs</div>', unsafe_allow_html=True)
+        st.caption("Documentation Q&A assistant")
+        mode = st.radio("Mode", ["Ask questions", "Admin"], key="mode")
+        st.markdown(
+            '<div class="section-label">How it works</div>'
+            '<div class="step"><b>1</b><span>You ask a question in plain English.</span></div>'
+            '<div class="step"><b>2</b><span>We search the documents and check there is real evidence.</span></div>'
+            '<div class="step"><b>3</b><span>You get an answer with its sources, or an honest "I don\'t know".</span></div>',
+            unsafe_allow_html=True)
+        st.caption("Admin access is password protected.")
     if mode == "Ask questions":
         user_mode(svc)
     else:

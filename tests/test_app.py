@@ -95,6 +95,17 @@ def test_unsupported_question_shows_exact_refusal_and_no_sources(app):
     assert len(at.expander) == 0
 
 
+def test_example_question_buttons_ask_the_question_and_then_disappear(app):
+    at = app.run()
+    examples = [b for b in at.button if b.key and b.key.startswith("example-")]
+    assert len(examples) == 4                                   # shown on the empty state
+    examples[0].click().run()
+    assert not at.exception
+    assert [m.name for m in at.chat_message] == ["user", "assistant"]
+    assert "How do I reset my password?" in all_text(at)
+    assert not [b for b in at.button if b.key and b.key.startswith("example-")]   # gone once a chat has started
+
+
 def test_chat_history_is_kept_during_the_session(app):
     at = app.run()
     ask(at, "How do I reset my password?")
