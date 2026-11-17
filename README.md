@@ -1,68 +1,250 @@
-# Solstice Learning – Document Q&A Assistant
+# Solstice Learning — Docs Q&A Assistant
 
-Ask plain-English questions about uploaded product documentation and get answers with source
-citations. If the documents do not contain the answer, the assistant replies exactly:
-**"I don't have an answer for that."**
+A documentation-grounded question-answering assistant that helps corporate learning administrators find answers in product documentation. It retrieves relevant passages, generates answers from those passages, cites sources, and refuses when the documentation does not support an answer.
 
-> Status: built phase by phase. See "Implemented vs future work" at the bottom for what is
-> actually done and tested. (Streamlit UI, document lifecycle and deployment come in later phases.)
+## 1. Project overview
 
-## Setup (development)
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-winget install UB-Mannheim.TesseractOCR        # OCR (Ubuntu: sudo apt install tesseract-ocr)
-ollama pull qwen2.5:7b                         # local LLM, ~4.7 GB
-Copy-Item .env.example .env
-.\.venv\Scripts\python.exe -m pytest -q
+Solstice Learning is an online-course platform for corporate training teams. Administrators repeatedly ask Support questions about password resets, export limits and billing cycles, even though answers already exist in product documentation.
+
+The assistant lets an administrator ask a question in plain English. It searches the documentation, checks whether the retrieved passages provide enough evidence, and uses an LLM to formulate an answer from that evidence.
+
+If the documentation does not contain the answer, it must return exactly:
+
+```text
+I don't have an answer for that.
 ```
 
-## Run the app locally (no AWS needed)
-```powershell
-.\.venv\Scripts\python.exe scripts\generate_admin_hash.py      # choose an admin password, copy the printed line into .env
-# in .env set:  DEV_FAKE_S3=1     (documents live in an in-memory fake S3 and vanish on restart)
-ollama serve                                                   # if Ollama is not already running
-.\.venv\Scripts\streamlit.exe run app.py
+**Core principle:** the LLM phrases the answer; the documentation supplies the facts.
+
+## 2. Main features
+
+- Natural-language question answering through Streamlit.
+- Hybrid retrieval using BM25 keyword search and FAISS semantic search.
+- Document chunking with metadata for focused retrieval and citations.
+- Evidence sufficiency check before answer generation.
+- Grounded answer generation using Qwen2.5 through Ollama.
+- Source references so users can verify answers.
+- Fixed refusal when the documentation does not support an answer.
+- Admin document upload and storage in private Amazon S3.
+
+## 3. Architecture
+
+The application runs on an Amazon EC2 instance. Streamlit provides the interface and invokes the Python retrieval workflow. Ollama serves Qwen2.5 locally. Original uploaded documents are stored in a private S3 bucket.
+
+```mermaid
+flowchart TD
+    U[Administrator / Browser] -->|HTTPS| S[Streamlit]
+    S[Streamlit Application]
+    S --> R[Hybrid Retrieval]
+    R --> B[BM25 Search]
+    R --> F[FAISS Semantic Search]
+    B --> M[Merge and Deduplicate]
+    F --> M
+    M --> E{Evidence sufficient?}
+    E -->|No| X["I don't have an answer for that."]
+    E -->|Yes| P[Build grounded prompt]
+    P --> O[Ollama]
+    O --> Q[Qwen2.5]
+    Q --> A[Answer with source]
+
+    D[Documentation] --> C[Chunking]
+    C --> V[(FAISS Index)]
+    C --> I[(BM25 Index)]
+    V --> F
+    I --> B
+
+    S -->|Boto3 + EC2 IAM role| S3[(Private Amazon S3)]
 ```
-Open http://localhost:8501. **Ask questions** is the user mode; **Admin** (sidebar) asks for the password, then
-allows uploads and shows each document's processing status. With `DEV_FAKE_S3=0` and `S3_BUCKET_NAME` set,
-the app uses the real private bucket through the EC2 IAM role (see `docs/AWS_SETUP.md`).
 
-## How a question is answered
-1. **Hybrid retrieval** – BM25 (keywords) and FAISS (semantic) are searched independently; results are
-   merged and de-duplicated by chunk id. Scores are never added: BM25 scores are unbounded and corpus-dependent,
-   FAISS cosine scores are in -1..1, so each keeps its own scale.
-2. **Evidence check (no LLM involved)** – a retrieved passage *supports* the question only if
-   * **retriever signal:** `bm25_score >= BM25_MIN_SCORE` **or** `faiss_score >= FAISS_MIN_SCORE`
-     (each compared to its own threshold), **and**
-   * **term overlap:** at least `MIN_TERM_OVERLAP` of the question's content words (stop-words removed,
-     word forms folded: link/links, invite/inviting) appear in the passage.
+### Main components
 
-   If no passage supports the question the assistant returns the exact refusal **without calling the LLM**.
-3. **Grounded generation** – only supporting passages (max 4) go to Qwen2.5 at temperature 0 with instructions to
-   answer only from them, cite `[n]`, or reply with the refusal. If the model refuses, we return exactly the refusal.
-4. **Citations** – built from the passages that were supplied (title, chunk id, page, snippet).
-5. **Ollama down** – a passage that already passed the evidence check is shown as an extractive answer, with a notice.
+| Component | Responsibility |
+|---|---|
+| Streamlit | User interface and Python workflow orchestration. |
+| EC2 | Hosts the application, retrieval components and local model runtime. |
+| S3 | Stores original uploaded documents privately. |
+| Boto3 | Connects the Python application to S3 for upload/download operations. |
+| BM25 | Finds exact words, terms, identifiers and values. |
+| Sentence Transformers | Converts questions and passages into embeddings. |
+| FAISS | Searches embeddings for semantically similar passages. |
+| Ollama + Qwen2.5 | Runs the LLM locally and generates grounded answers. |
 
-### Evidence thresholds (calibrated, not guessed)
-Stored in `data/evidence_thresholds.json`, produced by `python scripts/calibrate_evidence.py --leak-cost 1 --coverage-floor 0.4 --write`
-from 33 labelled questions in `data/eval/questions.json` (the 5 case-study questions + 28 **project-created** ones:
-paraphrases, near-misses and out-of-scope questions). Override with env vars `BM25_MIN_SCORE`, `FAISS_MIN_SCORE`, `MIN_TERM_OVERLAP`.
+## 4. Document upload and indexing pipeline
 
-| Setting | Value | Meaning |
-|---|---|---|
-| `bm25_min` | 3.5 | BM25 score a passage needs (6-article corpus) |
-| `faiss_min` | 0.46 | cosine similarity a passage needs |
-| `min_coverage` | 0.4 | share of question content words found in the passage |
+When an administrator uploads a document, the application validates it, stores the original in S3, processes a temporary working copy on EC2, and updates the retrieval indexes.
 
-How they were chosen: every combination on a grid was scored against the labelled questions (answering an
-unanswerable question and refusing an answerable one both count as errors); the combination with the lowest
-cost *averaged over its neighbourhood* wins, so it sits inside a stable region instead of on a knife edge.
-`min_coverage` has a floor of 0.4 (the lowest coverage any answerable question needed), because with only
-33 questions the optimiser otherwise ignores overlap and relies on score cut-offs alone, which is exactly what
-the design warns against ("similarity alone is not proof").
+```mermaid
+flowchart TD
+    A[Admin uploads document] --> B[Validate file]
+    B -->|Valid| C[Upload original to private S3]
+    B -->|Invalid| X[Reject upload]
+    C --> D[Download temporary copy to EC2]
+    D --> E[Extract document text]
+    E --> F[Split into overlapping chunks]
+    F --> G[Generate embeddings]
+    F --> H[Tokenize text]
+    G --> I[(FAISS Index)]
+    H --> J[(BM25 Index)]
+    I --> K[Document searchable]
+    J --> K
+    E -->|Processing failure| Y[Mark failed; retain original in S3]
+```
 
-**Trade-off (intended):** the gate may refuse some answerable questions; that is preferred to inventing an answer.
-It also cannot catch every *near-miss* (e.g. "price of the Enterprise plan" shares words with the docs but the
-price is not documented). Those pass to the LLM, whose prompt tells it to refuse unless a passage directly answers.
-BM25 scores depend on corpus size, so **re-run the calibration after the document set changes substantially.**
+### Storage responsibilities
+
+- **Amazon S3:** Stores original uploaded files durably in a private bucket.
+- **EC2:** Temporarily holds downloaded files during processing and stores/uses the retrieval indexes and application runtime.
+- **Boto3:** Python AWS SDK used by the application to communicate with S3.
+- **IAM role:** Allows the EC2 instance to access the required S3 bucket without hardcoding AWS access keys.
+
+Temporary files should be cleaned up after processing. If processing fails, retain the original in S3 and record the failure so it can be retried. Only make a document searchable after its indexing completes successfully.
+
+## 5. Question-answering and RAG pipeline
+
+RAG (Retrieval-Augmented Generation) retrieves relevant information first, then gives it to the LLM to formulate an answer.
+
+```mermaid
+flowchart TD
+    A[User asks a question] --> B[Create query embedding]
+    B --> C1[BM25 keyword search]
+    B --> C2[FAISS semantic search]
+    C1 --> D[Merge and deduplicate results]
+    C2 --> D
+    D --> E{Evidence sufficient?}
+    E -->|No| F[Return exact refusal]
+    E -->|Yes| G[Build prompt with passages]
+    G --> H[Qwen2.5 through Ollama]
+    H --> I[Display answer and source]
+```
+
+1. BM25 finds lexical matches; FAISS finds semantically similar passages.
+2. Results are combined and duplicate chunks are removed.
+3. The evidence check determines whether the passages actually support an answer.
+4. If evidence is sufficient, the question and passages are sent to Qwen2.5.
+5. The answer is displayed with its source. If evidence is insufficient, the fixed refusal is returned.
+
+Retrieval scores identify candidate passages; they do not by themselves prove that the content supports an answer. BM25 and FAISS scores should not simply be added because they use different scales.
+
+## 6. Chunking approach
+
+The initial design uses three sentences per chunk with a one-sentence overlap. Each chunk keeps metadata such as document ID, title and chunk ID.
+
+```text
+Article: S1 S2 S3 S4 S5 S6 S7
+
+Chunk 0: S1 S2 S3
+Chunk 1:       S3 S4 S5
+Chunk 2:             S5 S6 S7
+```
+
+Overlap helps preserve context around chunk boundaries. Every sentence, including the final sentence, must appear in at least one chunk.
+
+## 7. Technology stack
+
+| Technology | Usage |
+|---|---|
+| Python | Main application and retrieval logic |
+| Streamlit | Web interface |
+| Amazon EC2 | Application and model hosting |
+| Amazon S3 | Private storage for original documents |
+| Boto3 / IAM role | Secure Python-to-S3 access |
+| `rank-bm25` | Keyword retrieval |
+| Sentence Transformers (`all-MiniLM-L6-v2`) | Text embeddings |
+| FAISS | Vector similarity search |
+| Ollama | Local LLM runtime |
+| Qwen2.5:7b | Answer generation |
+
+**Important distinctions:** FAISS searches vectors but does not create embeddings. Sentence Transformers creates embeddings. Ollama runs the model; Qwen2.5 is the model. BM25 is keyword-based retrieval, not semantic search.
+
+## 8. Logical code flow
+
+The exact repository files should be checked against the source code. This diagram shows the intended separation of responsibilities, not a verified list of filenames.
+
+```mermaid
+flowchart TD
+    A[Streamlit UI] --> B[RAG Pipeline]
+    B --> C[Hybrid Retrieval]
+    C --> D[BM25]
+    C --> E[FAISS]
+    D --> F[Merge Results]
+    E --> F
+    F --> G[Evidence Check]
+    G -->|Insufficient| H[Fixed refusal]
+    G -->|Sufficient| I[Prompt Builder]
+    I --> J[Ollama / Qwen2.5]
+    J --> K[Answer + Source]
+    L[Document Upload] --> M[S3 Storage]
+    M --> N[Document Processing]
+    N --> O[Chunking and Embeddings]
+    O --> D
+    O --> E
+```
+
+Typical logical responsibilities:
+- **UI:** Accepts questions and uploads; displays answers and sources.
+- **Storage layer:** Uploads and downloads original documents from S3 using Boto3.
+- **Document processing:** Extracts text from supported file types.
+- **Chunking and embeddings:** Creates passages and their vector representations.
+- **Retrieval:** Searches BM25 and FAISS and combines results.
+- **RAG pipeline:** Checks evidence, builds the prompt and calls Ollama.
+- **Configuration:** Holds model, storage and retrieval settings.
+
+Use the actual repository structure and function names when documenting the final implementation.
+
+## 9. AWS deployment overview
+
+```mermaid
+flowchart TD
+    U[User Browser] -->|HTTPS| S[Streamlit]
+    S[Streamlit :8501]
+    S --> R[Python Retrieval / RAG]
+    R --> O[Ollama :11434]
+    O --> Q[Qwen2.5]
+
+    S -->|Boto3 using EC2 IAM role| B[(Private S3 Bucket)]
+    B -->|Temporary download| P[Document processing on EC2]
+    P --> I[(BM25 + FAISS indexes)]
+    I --> R
+
+    subgraph AWS["AWS"]
+      subgraph EC2["EC2 Instance"]
+          S
+        R
+        O
+        Q
+        P
+        I
+      end
+      B
+    end
+```
+
+- Browser requests reach the Streamlit application on the EC2 instance.
+- Streamlit calls retrieval code directly and communicates with local Ollama.
+- The EC2 IAM role grants the application the required S3 permissions.
+- S3 stores originals; EC2 handles temporary processing and retrieval.
+- Do not expose Streamlit port `8501` or Ollama port `11434` publicly. Restrict SSH access to a trusted IP.
+- Configure HTTPS for shared deployments and keep AWS credentials and secrets out of source control.
+
+## 10. Error handling and limitations
+
+- **Unsupported or invalid upload:** Reject the file.
+- **S3 upload failure:** Stop processing and report the failure.
+- **Extraction or indexing failure:** Retain the original in S3, mark processing as failed and allow retry.
+- **Ollama unavailable:** Show a clear model-unavailable message; do not claim an LLM-generated answer was produced.
+- **Insufficient evidence:** Return exactly `I don't have an answer for that.`
+- **Related but unsupported passage:** Do not infer an answer from topical similarity.
+
+The prototype uses a single EC2 instance, so it is not highly available. Local model inference requires sufficient memory and CPU. Evidence sufficiency needs testing with answerable, paraphrased and unanswerable questions. No accuracy or latency figures should be claimed unless measured.
+
+## 11. Future improvements
+
+- Expand the evaluation set and measure retrieval and answer quality.
+- Add more document formats and preserve document headings/versions.
+- Improve support for questions requiring multiple documents.
+- Add monitoring, backups and stronger production authentication.
+- Separate application and model workloads if usage grows.
+
+---
+
+**Note:** Keep this README aligned with the actual source code. Mark any planned or partially implemented functionality clearly.
